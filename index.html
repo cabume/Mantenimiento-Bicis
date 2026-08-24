@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b1f24">
+<title>Mis Bicis</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#14171c; --card:#1f242b; --card2:#272d36; --line:#323a45;
+    --fg:#e9edf2; --muted:#97a2b0; --acc:#4fc3f7; --ok:#4caf50; --warn:#ffb300; --bad:#ef5350;
+    --r:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+  body{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+  header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}
+  header h1{font-size:20px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header button{background:none;border:0;color:var(--acc);font-size:16px;padding:6px 8px}
+  main{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--card);border-radius:var(--r);padding:14px;border:1px solid var(--line)}
+  .card h2{margin:0 0 6px;font-size:18px}
+  .card.tap{cursor:pointer}
+  .card.tap:active{background:var(--card2)}
+  .muted{color:var(--muted);font-size:14px}
+  .row{display:flex;align-items:center;gap:10px}
+  .row .grow{flex:1;min-width:0}
+  .pill{font-size:12px;padding:3px 8px;border-radius:99px;background:var(--card2);color:var(--muted);white-space:nowrap}
+  .pill.ok{background:#1f3b24;color:#8ee28f}
+  .pill.warn{background:#46350a;color:#ffd56b}
+  .pill.bad{background:#4a1f1f;color:#ff9b9b}
+  .bar{height:8px;background:var(--card2);border-radius:99px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;border-radius:99px;background:var(--ok)}
+  .bar i.warn{background:var(--warn)} .bar i.bad{background:var(--bad)}
+  .big{font-size:32px;font-weight:700;line-height:1}
+  .section{margin:8px 0 0;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--acc);color:#052332;border:0;border-radius:12px;padding:12px 16px;font-size:16px;font-weight:600}
+  .btn.sec{background:var(--card2);color:var(--fg)}
+  .btn.danger{background:#4a1f1f;color:#ff9b9b}
+  .btn.sm{padding:8px 12px;font-size:14px;border-radius:10px}
+  .btn:active{opacity:.8}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  .actions .btn{flex:1}
+  .fab{position:fixed;right:18px;bottom:calc(22px + env(safe-area-inset-bottom));width:58px;height:58px;border-radius:50%;background:var(--acc);color:#052332;border:0;font-size:30px;box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:4}
+  .empty{text-align:center;padding:40px 16px;color:var(--muted)}
+  .empty .ico{font-size:56px}
+  .item{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  .item:first-child{border-top:0}
+  .item .date{color:var(--muted);font-size:13px;min-width:82px}
+  .item .t{font-weight:600}
+  .item .n{font-size:14px;color:var(--muted);white-space:pre-wrap}
+  .item .cost{margin-left:auto;color:var(--muted);font-size:14px;white-space:nowrap}
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:10}
+  .modal.open{display:flex}
+  .sheet{background:var(--card);width:100%;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:18px 18px calc(24px + env(safe-area-inset-bottom))}
+  .sheet h3{margin:0 0 14px;font-size:19px}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+  input,select,textarea{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:16px}
+  textarea{min-height:70px;resize:vertical}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .sheet .actions{margin-top:18px}
+  .toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000c;color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:20}
+  .toast.show{opacity:1}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<main id="app"></main>
+<button class="fab hidden" id="fab">+</button>
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= DATOS ================= */
+const KEY = 'misbicis-v1';
+const DEFAULT_TASKS = [
+  { name: 'Lubricar cadena',         intervalKm: 200,  intervalDays: null },
+  { name: 'Cambiar cadena',          intervalKm: 2500, intervalDays: null },
+  { name: 'Pastillas de freno',      intervalKm: 2000, intervalDays: null },
+  { name: 'Purgar frenos',           intervalKm: null, intervalDays: 365 },
+  { name: 'Cubiertas',               intervalKm: 4000, intervalDays: null },
+  { name: 'Cassette y platos',       intervalKm: 7000, intervalDays: null },
+  { name: 'Revisión general',        intervalKm: 1500, intervalDays: 180 },
+];
+let db = load();
+function load(){
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.bikes) return d; } catch(e){}
+  return { bikes: [], logs: [] };
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(db)); }
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+const today = () => new Date().toISOString().slice(0,10);
+const fmtDate = d => { if(!d) return '—'; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; };
+const fmtKm = n => (Math.round(n*10)/10).toLocaleString('es-ES') + ' km';
+const daysBetween = (a,b) => Math.floor((new Date(b) - new Date(a)) / 86400000);
+const bike = id => db.bikes.find(b => b.id === id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* Estado de una tarea: 0..1+ (1 = toca ya) */
+function taskStatus(b, t){
+  let r = 0, detail = [];
+  if (t.intervalKm){
+    const used = Math.max(0, b.km - (t.lastKm ?? 0));
+    r = Math.max(r, used / t.intervalKm);
+    detail.push(`${fmtKm(used)} / ${fmtKm(t.intervalKm)}`);
+  }
+  if (t.intervalDays){
+    const used = Math.max(0, daysBetween(t.lastDate || b.created || today(), today()));
+    r = Math.max(r, used / t.intervalDays);
+    detail.push(`${used} / ${t.intervalDays} días`);
+  }
+  const cls = r >= 1 ? 'bad' : r >= 0.8 ? 'warn' : 'ok';
+  return { r, cls, detail: detail.join(' · ') };
+}
+function bikeAlerts(b){ return b.tasks.map(t => taskStatus(b,t)).filter(s => s.r >= 0.8).length; }
+
+/* ================= ROUTER ================= */
+let route = { view: 'home' };
+function go(view, id){ route = { view, id }; window.scrollTo(0,0); render(); }
+function render(){
+  const hdr = document.getElementById('hdr'), app = document.getElementById('app'), fab = document.getElementById('fab');
+  if (route.view === 'home') renderHome(hdr, app, fab);
+  else if (route.view === 'bike') { if (!bike(route.id)) return go('home'); renderBike(hdr, app, fab, bike(route.id)); }
+  else if (route.view === 'settings') renderSettings(hdr, app, fab);
+}
+
+/* ================= INICIO ================= */
+function renderHome(hdr, app, fab){
+  hdr.innerHTML = `<h1>🚲 Mis Bicis</h1><button onclick="go('settings')">⚙️</button>`;
+  if (!db.bikes.length){
+    app.innerHTML = `<div class="empty"><div class="ico">🚲</div><p>Aún no tienes bicis.<br>Pulsa <b>+</b> para añadir la primera.</p></div>`;
+  } else {
+    app.innerHTML = db.bikes.map(b => {
+      const n = bikeAlerts(b);
+      const worst = b.tasks.map(t => taskStatus(b,t)).sort((x,y)=>y.r-x.r)[0];
+      return `<div class="card tap" onclick="go('bike','${b.id}')">
+        <div class="row"><div class="grow"><h2>${esc(b.name)}</h2>
+          <div class="muted">${esc(b.type||'')}${b.brand?' · '+esc(b.brand):''}</div></div>
+          <div style="text-align:right"><div class="big" style="font-size:22px">${fmtKm(b.km)}</div>
+          ${n ? `<span class="pill ${worst.cls}">${n} aviso${n>1?'s':''}</span>` : `<span class="pill ok">Al día</span>`}</div>
+        </div></div>`;
+    }).join('');
+  }
+  fab.classList.remove('hidden'); fab.onclick = () => formBike();
+}
+
+/* ================= FICHA BICI ================= */
+function renderBike(hdr, app, fab, b){
+  hdr.innerHTML = `<button onclick="go('home')">‹ Atrás</button><h1>${esc(b.name)}</h1><button onclick="formBike('${b.id}')">Editar</button>`;
+  const tasks = b.tasks.map(t => ({t, s: taskStatus(b,t)})).sort((x,y)=>y.s.r-x.s.r);
+  const logs = db.logs.filter(l => l.bikeId === b.id).sort((x,y)=> y.date.localeCompare(x.date) || (y.ts||0)-(x.ts||0));
+  const total = logs.reduce((a,l)=>a+(+l.cost||0),0);
+  app.innerHTML = `
+    <div class="card">
+      <div class="muted">${esc(b.type||'')}${b.brand?' · '+esc(b.brand):''}</div>
+      <div class="big" style="margin:6px 0 10px">${fmtKm(b.km)}</div>
+      ${b.notes?`<div class="muted" style="white-space:pre-wrap;margin-bottom:10px">${esc(b.notes)}</div>`:''}
+      <div class="actions">
+        <button class="btn" onclick="formKm('${b.id}')">+ Km</button>
+        <button class="btn sec" onclick="formLog('${b.id}')">+ Mantenimiento</button>
+      </div>
+    </div>
+    <div class="section">Desgaste / próximos mantenimientos</div>
+    <div class="card">
+      ${tasks.length ? tasks.map(({t,s}) => `
+        <div class="item" style="flex-direction:column;gap:2px" onclick="formTask('${b.id}','${t.id}')">
+          <div class="row"><div class="grow t">${esc(t.name)}</div><span class="pill ${s.cls}">${s.r>=1?'¡Toca ya!':s.r>=0.8?'Pronto':Math.round(s.r*100)+'%'}</span></div>
+          <div class="muted" style="font-size:13px">${s.detail}${t.lastDate?' · último: '+fmtDate(t.lastDate):''}</div>
+          <div class="bar"><i class="${s.cls}" style="width:${Math.min(100,s.r*100)}%"></i></div>
+        </div>`).join('') : `<div class="muted">Sin tareas de desgaste.</div>`}
+      <div style="margin-top:12px"><button class="btn sec sm" onclick="formTask('${b.id}')">+ Añadir tarea</button></div>
+    </div>
+    <div class="section">Historial (${logs.length})${total?` · ${total.toLocaleString('es-ES',{style:'currency',currency:'EUR'})}`:''}</div>
+    <div class="card">
+      ${logs.length ? logs.map(l => `
+        <div class="item" onclick="formLog('${b.id}','${l.id}')">
+          <div class="date">${fmtDate(l.date)}<br><span style="font-size:12px">${l.km!=null?fmtKm(l.km):''}</span></div>
+          <div class="grow"><div class="t">${esc(l.type)}</div>${l.notes?`<div class="n">${esc(l.notes)}</div>`:''}</div>
+          ${l.cost?`<div class="cost">${(+l.cost).toLocaleString('es-ES',{style:'currency',currency:'EUR'})}</div>`:''}
+        </div>`).join('') : `<div class="muted">Aún no hay mantenimientos registrados.</div>`}
+    </div>`;
+  fab.classList.add('hidden');
+}
+
+/* ================= AJUSTES ================= */
+function renderSettings(hdr, app, fab){
+  hdr.innerHTML = `<button onclick="go('home')">‹ Atrás</button><h1>Ajustes</h1>`;
+  app.innerHTML = `
+    <div class="card"><h2>Copia de seguridad</h2>
+      <p class="muted">Los datos se guardan solo en este móvil. Exporta de vez en cuando para no perderlos.</p>
+      <div class="actions">
+        <button class="btn" onclick="exportData()">Exportar JSON</button>
+        <button class="btn sec" onclick="document.getElementById('imp').click()">Importar JSON</button>
+        <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this.files[0])">
+      </div></div>
+    <div class="card"><h2>Datos</h2>
+      <p class="muted">${db.bikes.length} bicis · ${db.logs.length} mantenimientos</p>
+      <button class="btn danger sm" onclick="if(confirm('¿Borrar TODOS los datos? No se puede deshacer.')){db={bikes:[],logs:[]};save();toast('Datos borrados');go('home')}">Borrar todo</button>
+    </div>
+    <div class="card muted" style="font-size:13px">Mis Bicis · app personal · v1.0</div>`;
+  fab.classList.add('hidden');
+}
+function exportData(){
+  const blob = new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `misbicis-${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
+}
+function importData(file){
+  if(!file) return;
+  const r = new FileReader();
+  r.onload = () => { try { const d = JSON.parse(r.result); if(!d.bikes||!d.logs) throw 0;
+    if(confirm(`Importar ${d.bikes.length} bicis y ${d.logs.length} mantenimientos. Sustituirá los datos actuales.`)){ db = d; save(); toast('Importado'); go('home'); }
+  } catch(e){ alert('Archivo no válido'); } };
+  r.readAsText(file);
+}
+
+/* ================= MODAL / FORMS ================= */
+const modal = document.getElementById('modal'), sheet = document.getElementById('sheet');
+function openSheet(html){ sheet.innerHTML = html; modal.classList.add('open'); }
+function closeSheet(){ modal.classList.remove('open'); }
+modal.addEventListener('click', e => { if (e.target === modal) closeSheet(); });
+const val = id => document.getElementById(id).value.trim();
+const num = id => { const v = val(id).replace(',','.'); return v === '' ? null : +v; };
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+/* --- Bici --- */
+function formBike(id){
+  const b = id ? bike(id) : { name:'', type:'MTB', brand:'', km:0, notes:'' };
+  openSheet(`<h3>${id?'Editar bici':'Nueva bici'}</h3>
+    <label>Nombre *</label><input id="f-name" value="${esc(b.name)}" placeholder="Ej. Orbea Alma">
+    <div class="grid2"><div><label>Tipo</label><select id="f-type">${['MTB','Carretera','Gravel','Urbana','eBike','BMX','Otra'].map(t=>`<option ${b.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div><label>Marca / modelo</label><input id="f-brand" value="${esc(b.brand)}"></div></div>
+    <label>Km totales actuales</label><input id="f-km" type="number" inputmode="decimal" step="0.1" value="${b.km}">
+    <label>Notas (talla, componentes, presiones…)</label><textarea id="f-notes">${esc(b.notes)}</textarea>
+    ${!id?`<label><input type="checkbox" id="f-def" checked style="width:auto;margin-right:8px">Crear tareas de desgaste por defecto (cadena, pastillas, frenos…)</label>`:''}
+    <div class="actions">
+      ${id?`<button class="btn danger" onclick="delBike('${id}')">Eliminar</button>`:''}
+      <button class="btn sec" onclick="closeSheet()">Cancelar</button>
+      <button class="btn" onclick="saveBike('${id||''}')">Guardar</button>
+    </div>`);
+  setTimeout(()=>document.getElementById('f-name').focus(),50);
+}
+function saveBike(id){
+  const name = val('f-name'); if(!name) return alert('Pon un nombre');
+  if (id){
+    const b = bike(id); Object.assign(b, { name, type: val('f-type'), brand: val('f-brand'), km: num('f-km')||0, notes: val('f-notes') });
+  } else {
+    const km = num('f-km')||0, b = { id: uid(), name, type: val('f-type'), brand: val('f-brand'), km, notes: val('f-notes'), created: today(), tasks: [] };
+    if (document.getElementById('f-def').checked)
+      b.tasks = DEFAULT_TASKS.map(t => ({ id: uid(), ...t, lastKm: km, lastDate: today() }));
+    db.bikes.push(b); id = b.id;
+  }
+  save(); closeSheet(); toast('Guardado'); go('bike', id);
+}
+function delBike(id){
+  if(!confirm('¿Eliminar la bici y todo su historial?')) return;
+  db.bikes = db.bikes.filter(b=>b.id!==id); db.logs = db.logs.filter(l=>l.bikeId!==id);
+  save(); closeSheet(); go('home');
+}
+
+/* --- Km --- */
+function formKm(bid){
+  const b = bike(bid);
+  openSheet(`<h3>Añadir kilómetros</h3>
+    <p class="muted">Ahora: <b>${fmtKm(b.km)}</b></p>
+    <label>Km de la salida (se suman)</label><input id="f-add" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 42.5">
+    <p class="muted" style="text-align:center;margin:10px 0 0">— o —</p>
+    <label>Fijar total del cuentakilómetros</label><input id="f-total" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 3120">
+    <div class="actions"><button class="btn sec" onclick="closeSheet()">Cancelar</button><button class="btn" onclick="saveKm('${bid}')">Guardar</button></div>`);
+  setTimeout(()=>document.getElementById('f-add').focus(),50);
+}
+function saveKm(bid){
+  const b = bike(bid), add = num('f-add'), total = num('f-total');
+  if (total != null) b.km = total; else if (add != null) b.km = Math.round((b.km + add)*10)/10; else return alert('Introduce un valor');
+  save(); closeSheet(); toast(fmtKm(b.km)); render();
+}
+
+/* --- Tarea de desgaste --- */
+function formTask(bid, tid){
+  const b = bike(bid), t = tid ? b.tasks.find(t=>t.id===tid) : { name:'', intervalKm:'', intervalDays:'', lastKm:b.km, lastDate:today() };
+  openSheet(`<h3>${tid?'Tarea de desgaste':'Nueva tarea'}</h3>
+    <label>Nombre *</label><input id="f-tn" value="${esc(t.name)}" list="tasknames" placeholder="Ej. Cambiar cadena">
+    <datalist id="tasknames">${DEFAULT_TASKS.map(d=>`<option value="${d.name}">`).join('')}<option value="Aceite horquilla"><option value="Rodamientos"><option value="Cinta manillar"></datalist>
+    <div class="grid2">
+      <div><label>Cada X km</label><input id="f-tk" type="number" inputmode="numeric" value="${t.intervalKm??''}" placeholder="vacío = no"></div>
+      <div><label>Cada X días</label><input id="f-td" type="number" inputmode="numeric" value="${t.intervalDays??''}" placeholder="vacío = no"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Km de la bici al hacerla por última vez</label><input id="f-tlk" type="number" inputmode="decimal" step="0.1" value="${t.lastKm??''}"></div>
+      <div><label>Fecha última vez</label><input id="f-tld" type="date" value="${t.lastDate||''}"></div>
+    </div>
+    <div class="actions">
+      ${tid?`<button class="btn danger" onclick="delTask('${bid}','${tid}')">Eliminar</button>`:''}
+      <button class="btn sec" onclick="closeSheet()">Cancelar</button>
+      <button class="btn" onclick="saveTask('${bid}','${tid||''}')">Guardar</button>
+    </div>
+    ${tid?`<div style="margin-top:10px"><button class="btn sm" style="width:100%" onclick="closeSheet();formLog('${bid}',null,'${tid}')">✔ Hecho hoy → registrar mantenimiento</button></div>`:''}`);
+}
+function saveTask(bid, tid){
+  const b = bike(bid), name = val('f-tn'); if(!name) return alert('Pon un nombre');
+  const ik = num('f-tk'), idd = num('f-td'); if(!ik && !idd) return alert('Indica km o días');
+  const data = { name, intervalKm: ik||null, intervalDays: idd||null, lastKm: num('f-tlk') ?? b.km, lastDate: val('f-tld') || today() };
+  if (tid) Object.assign(b.tasks.find(t=>t.id===tid), data); else b.tasks.push({ id: uid(), ...data });
+  save(); closeSheet(); render();
+}
+function delTask(bid, tid){ const b = bike(bid); b.tasks = b.tasks.filter(t=>t.id!==tid); save(); closeSheet(); render(); }
+
+/* --- Mantenimiento --- */
+function formLog(bid, lid, presetTaskId){
+  const b = bike(bid);
+  const l = lid ? db.logs.find(l=>l.id===lid) : { date: today(), type: presetTaskId ? b.tasks.find(t=>t.id===presetTaskId).name : '', cost:'', notes:'', km:b.km, taskId: presetTaskId||'' };
+  openSheet(`<h3>${lid?'Mantenimiento':'Nuevo mantenimiento'}</h3>
+    <div class="grid2"><div><label>Fecha</label><input id="f-ld" type="date" value="${l.date}"></div>
+    <div><label>Km de la bici</label><input id="f-lk" type="number" inputmode="decimal" step="0.1" value="${l.km??''}"></div></div>
+    <label>Qué has hecho *</label><input id="f-lt" value="${esc(l.type)}" list="logtypes" placeholder="Ej. Cambio de pastillas">
+    <datalist id="logtypes">${b.tasks.map(t=>`<option value="${esc(t.name)}">`).join('')}<option value="Pinchazo"><option value="Ajuste cambio"><option value="Centrado ruedas"><option value="Limpieza completa"></datalist>
+    <label>Reinicia el contador de la tarea</label>
+    <select id="f-ltask"><option value="">— ninguna —</option>${b.tasks.map(t=>`<option value="${t.id}" ${l.taskId===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+    <label>Coste (€)</label><input id="f-lc" type="number" inputmode="decimal" step="0.01" value="${l.cost??''}">
+    <label>Notas (piezas, marca, taller…)</label><textarea id="f-ln">${esc(l.notes)}</textarea>
+    <div class="actions">
+      ${lid?`<button class="btn danger" onclick="delLog('${lid}')">Eliminar</button>`:''}
+      <button class="btn sec" onclick="closeSheet()">Cancelar</button>
+      <button class="btn" onclick="saveLog('${bid}','${lid||''}')">Guardar</button>
+    </div>`);
+  // al elegir un tipo que coincide con una tarea, preseleccionarla
+  document.getElementById('f-lt').addEventListener('input', e => {
+    const t = b.tasks.find(t=>t.name.toLowerCase()===e.target.value.trim().toLowerCase());
+    if (t) document.getElementById('f-ltask').value = t.id;
+  });
+}
+function saveLog(bid, lid){
+  const b = bike(bid), type = val('f-lt'); if(!type) return alert('Indica qué has hecho');
+  const data = { bikeId: bid, date: val('f-ld')||today(), type, cost: num('f-lc'), notes: val('f-ln'), km: num('f-lk'), taskId: val('f-ltask') };
+  if (lid) Object.assign(db.logs.find(l=>l.id===lid), data); else db.logs.push({ id: uid(), ts: Date.now(), ...data });
+  if (data.taskId){ const t = b.tasks.find(t=>t.id===data.taskId); if (t){ t.lastKm = data.km ?? b.km; t.lastDate = data.date; } }
+  if (data.km != null && data.km > b.km) b.km = data.km;
+  save(); closeSheet(); toast('Registrado'); render();
+}
+function delLog(lid){ if(!confirm('¿Eliminar este registro?')) return; db.logs = db.logs.filter(l=>l.id!==lid); save(); closeSheet(); render(); }
+
+/* ================= ARRANQUE ================= */
+render();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
