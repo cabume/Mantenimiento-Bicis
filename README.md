@@ -20,6 +20,30 @@ App web instalable para Android. Sin servidor, sin cuentas: todo se guarda en el
 - **Historial de mantenimientos** con fecha, km, coste y notas. Al registrar uno puedes elegir qué tarea reinicia.
   Desde una tarea hay un atajo "Hecho hoy → registrar mantenimiento".
 - **Exportar / importar JSON** (Ajustes ⚙️) para copia de seguridad o cambio de móvil.
+- **Strava**: suma automáticamente los km de cada salida a la bici correspondiente (ver abajo).
+
+## Conectar con Strava
+
+La app habla directamente con la API de Strava desde el móvil; no hace falta ningún servidor. Solo funciona con la
+app publicada por HTTPS (GitHub Pages), no abriendo `index.html` desde un archivo.
+
+1. En el PC entra en <https://www.strava.com/settings/api> y crea una aplicación:
+   - *Application Name*: Mis Bicis · *Website*: la URL de tu app · *Category*: la que sea.
+   - **Authorization Callback Domain**: el dominio de tu app, p. ej. `cabume.github.io` (sin `https://` ni ruta).
+   - Si pide un icono, sube `icon-512.png`.
+2. Anota el **Client ID** y el **Client Secret** que aparecen.
+3. En el móvil: app → ⚙️ Ajustes → Strava → pega Client ID y Secret, elige desde qué fecha importar salidas y pulsa
+   **Conectar con Strava**. Acepta todos los permisos (hace falta *ver actividades* para leer los km).
+4. Al volver a la app, en la misma tarjeta enlaza cada bici de la app con su bici de Strava (o con "Salidas sin bici
+   asignada" si no asignas bici en Strava).
+5. Pulsa **Sincronizar ahora**. Si marcas *Sincronizar al abrir la app*, lo hará solo cada vez que la abras.
+
+Solo se cuentan actividades de tipo bici (Ride, MTB, Gravel, eBike, Virtual…). Cada salida se suma una sola vez, aunque
+sincronices varias veces. Los km que añadas a mano se mantienen; Strava se suma encima.
+
+El Client Secret y los tokens se guardan en `localStorage` de tu móvil (y van dentro del JSON exportado, así que no
+compartas ese archivo). Si algún día quieres cortar el acceso: Ajustes → Strava → Desconectar, o en Strava →
+*Settings → My Apps → Revoke*.
 
 ## Cómo ponerla en el móvil
 
@@ -32,7 +56,7 @@ Para que se instale como app y funcione offline tiene que servirse por **HTTPS**
 3. En un minuto tendrás `https://TU_USUARIO.github.io/bicis-app/`.
 4. Ábrela en **Chrome** en el móvil → menú ⋮ → **"Instalar aplicación"** (o "Añadir a pantalla de inicio").
 
-Cada vez que cambies algo, sube los archivos y sube el número de versión en `sw.js` (`misbicis-v1` → `v2`) para que el móvil refresque la caché.
+Cada vez que cambies algo, sube los archivos y sube el número de versión en `sw.js` (`misbicis-v2` → `v3`) para que el móvil refresque la caché.
 
 ### Opción B — Netlify Drop
 

@@ -159,6 +159,7 @@ function renderBike(hdr, app, fab, b){
     <div class="card">
       <div class="muted">${esc(b.type||'')}${b.brand?' · '+esc(b.brand):''}</div>
       <div class="big" style="margin:6px 0 10px">${fmtKm(b.km)}</div>
+      ${stravaOn() && b.stravaGear ? `<div class="muted" style="font-size:13px;margin:-6px 0 10px"><span style="color:#fc4c02">●</span> Km sumados desde Strava${db.strava.lastSync?' · '+new Date(db.strava.lastSync).toLocaleDateString('es-ES'):''}</div>` : ''}
       ${b.notes?`<div class="muted" style="white-space:pre-wrap;margin-bottom:10px">${esc(b.notes)}</div>`:''}
       <div class="actions">
         <button class="btn" onclick="formKm('${b.id}')">+ Km</button>
@@ -198,12 +199,150 @@ function renderSettings(hdr, app, fab){
         <button class="btn sec" onclick="document.getElementById('imp').click()">Importar JSON</button>
         <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this.files[0])">
       </div></div>
+    ${renderStravaCard()}
     <div class="card"><h2>Datos</h2>
       <p class="muted">${db.bikes.length} bicis · ${db.logs.length} mantenimientos</p>
       <button class="btn danger sm" onclick="if(confirm('¿Borrar TODOS los datos? No se puede deshacer.')){db={bikes:[],logs:[]};save();toast('Datos borrados');go('home')}">Borrar todo</button>
     </div>
-    <div class="card muted" style="font-size:13px">Mis Bicis · app personal · v1.0</div>`;
+    <div class="card muted" style="font-size:13px">Mis Bicis · app personal · v1.1</div>`;
   fab.classList.add('hidden');
+}
+
+/* ================= STRAVA ================= */
+// Todo se hace desde el móvil contra la API de Strava (permite CORS). Client ID/Secret y tokens
+// se guardan solo en localStorage de este dispositivo; nunca en el repositorio.
+const STRAVA_RIDES = new Set(['Ride','MountainBikeRide','GravelRide','EBikeRide','EMountainBikeRide','VirtualRide','Handcycle','Velomobile']);
+const stravaOn = () => !!(db.strava && db.strava.refresh);
+function renderStravaCard(){
+  const s = db.strava || {};
+  if (!stravaOn()){
+    return `<div class="card"><h2>Strava</h2>
+      <p class="muted">Suma automáticamente los km de tus salidas de Strava a cada bici. Solo hay que hacerlo una vez:</p>
+      <ol class="muted" style="padding-left:20px;margin:0 0 6px;font-size:14px">
+        <li>Entra en <a href="https://www.strava.com/settings/api" target="_blank" style="color:var(--acc)">strava.com/settings/api</a> y crea una aplicación (nombre: Mis Bicis; si pide icono, sube el de la app).</li>
+        <li>En <b>Authorization Callback Domain</b> pon: <b>${esc(location.hostname || 'cabume.github.io')}</b></li>
+        <li>Copia aquí el <b>Client ID</b> y el <b>Client Secret</b> y pulsa Conectar.</li>
+      </ol>
+      <div class="grid2"><div><label>Client ID</label><input id="s-id" inputmode="numeric" value="${esc(s.clientId||'')}"></div>
+      <div><label>Client Secret</label><input id="s-sec" value="${esc(s.clientSecret||'')}"></div></div>
+      <label>Importar salidas desde</label><input id="s-from" type="date" value="${today()}">
+      <div class="actions" style="margin-top:12px"><button class="btn" style="background:#fc4c02;color:#fff" onclick="stravaConnect()">Conectar con Strava</button></div>
+    </div>`;
+  }
+  const gears = s.gears || [];
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${cur===v?'selected':''}>${esc(txt)}</option>`;
+  return `<div class="card"><h2>Strava</h2>
+    <p class="muted">Conectado${s.athlete?' como <b>'+esc(s.athlete)+'</b>':''} · última sincronización: ${s.lastSync ? new Date(s.lastSync).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : 'nunca'}</p>
+    <label>A qué bici de la app van las salidas de cada bici de Strava</label>
+    ${db.bikes.length ? db.bikes.map(b => `<div class="row" style="margin-bottom:8px"><div class="grow" style="font-weight:600">${esc(b.name)}</div>
+      <select style="width:58%" onchange="stravaSetGear('${b.id}',this.value)">
+        ${opt('', '— no sincronizar —', b.stravaGear||'')}
+        ${opt('_none', 'Salidas sin bici asignada', b.stravaGear||'')}
+        ${gears.map(g => opt(g.id, g.name + ' (' + fmtKm(g.km) + ')', b.stravaGear||'')).join('')}
+      </select></div>`).join('') : `<p class="muted">Añade primero una bici en la app.</p>`}
+    <label><input type="checkbox" style="width:auto;margin-right:8px" ${s.autoSync?'checked':''} onchange="db.strava.autoSync=this.checked;save()">Sincronizar al abrir la app</label>
+    <div class="actions" style="margin-top:12px">
+      <button class="btn" style="background:#fc4c02;color:#fff" onclick="stravaSync()">Sincronizar ahora</button>
+      <button class="btn sec" onclick="stravaLoadGears(true)">Actualizar bicis</button>
+      <button class="btn danger" onclick="stravaDisconnect()">Desconectar</button>
+    </div>
+  </div>`;
+}
+function stravaConnect(){
+  const id = val('s-id'), sec = val('s-sec'); if(!id || !sec) return alert('Pon el Client ID y el Client Secret de tu aplicación de Strava');
+  if (location.protocol === 'file:') return alert('Strava solo funciona con la app publicada (https), no abriendo el archivo directamente.');
+  const from = val('s-from') || today();
+  db.strava = Object.assign(db.strava || {}, { clientId: id, clientSecret: sec, after: Math.floor(new Date(from).getTime()/1000), seen: [] });
+  save();
+  const redirect = location.origin + location.pathname;
+  location.href = 'https://www.strava.com/oauth/authorize?client_id=' + encodeURIComponent(id) + '&response_type=code&redirect_uri=' + encodeURIComponent(redirect)
+    + '&approval_prompt=auto&scope=read,profile:read_all,activity:read_all';
+}
+async function stravaTokenRequest(body){
+  const s = db.strava;
+  const r = await fetch('https://www.strava.com/oauth/token', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ client_id: s.clientId, client_secret: s.clientSecret, ...body }) });
+  if (!r.ok) throw new Error(r.status === 400 || r.status === 401 ? 'Strava ha rechazado el Client ID / Secret o el permiso ha caducado. Vuelve a conectar.' : 'Error de Strava (' + r.status + ')');
+  const j = await r.json();
+  s.access = j.access_token; s.refresh = j.refresh_token; s.expiresAt = j.expires_at;
+  if (j.athlete) s.athlete = [j.athlete.firstname, j.athlete.lastname].filter(Boolean).join(' ');
+  save(); return s.access;
+}
+async function stravaToken(){
+  const s = db.strava;
+  if (s.access && s.expiresAt - 60 > Date.now()/1000) return s.access;
+  return stravaTokenRequest({ grant_type: 'refresh_token', refresh_token: s.refresh });
+}
+async function stravaGet(path){
+  const r = await fetch('https://www.strava.com/api/v3' + path, { headers: { Authorization: 'Bearer ' + await stravaToken() } });
+  if (r.status === 401) { db.strava.access = null; save(); throw new Error('Strava ha revocado el acceso. Vuelve a conectar.'); }
+  if (r.status === 429) throw new Error('Strava: demasiadas peticiones, prueba en 15 minutos.');
+  if (!r.ok) throw new Error('Error de Strava (' + r.status + ')');
+  return r.json();
+}
+// Vuelta del login de Strava: ?code=...&scope=...
+async function stravaCallback(){
+  const p = new URLSearchParams(location.search);
+  if (!p.has('code') && !p.has('error')) return false;
+  history.replaceState(null, '', location.pathname);
+  if (p.get('error') || !db.strava || !db.strava.clientId){ toast('Strava: acceso cancelado'); go('settings'); return true; }
+  try {
+    await stravaTokenRequest({ grant_type: 'authorization_code', code: p.get('code') });
+    if (!(p.get('scope') || '').includes('activity:read')) alert('No has dado permiso para leer actividades: no se podrán sumar los km. Desconecta y vuelve a conectar aceptando todos los permisos.');
+    await stravaLoadGears();
+    toast('Strava conectado');
+  } catch(e){ delete db.strava.refresh; save(); alert(e.message); }
+  go('settings'); return true;
+}
+async function stravaLoadGears(notify){
+  try {
+    const a = await stravaGet('/athlete');
+    db.strava.gears = (a.bikes || []).map(g => ({ id: g.id, name: g.name, km: (g.distance || 0)/1000 }));
+    if (!db.strava.athlete) db.strava.athlete = [a.firstname, a.lastname].filter(Boolean).join(' ');
+    // si solo hay una bici en cada sitio y no está enlazada, enlazarla
+    if (db.bikes.length === 1 && db.strava.gears.length === 1 && !db.bikes[0].stravaGear) db.bikes[0].stravaGear = db.strava.gears[0].id;
+    save(); if (notify){ toast(db.strava.gears.length + ' bicis en Strava'); render(); }
+  } catch(e){ if (notify) alert(e.message); }
+}
+function stravaSetGear(bid, gear){
+  const b = bike(bid); b.stravaGear = gear;
+  if (gear) db.bikes.forEach(o => { if (o.id !== bid && o.stravaGear === gear) o.stravaGear = ''; }); // una bici de Strava → una de la app
+  save(); render();
+}
+function stravaDisconnect(){
+  if (!confirm('¿Desconectar Strava? Los km ya sumados se mantienen.')) return;
+  const { clientId, clientSecret } = db.strava; db.strava = { clientId, clientSecret };
+  db.bikes.forEach(b => delete b.stravaGear); save(); render();
+}
+let stravaBusy = false;
+async function stravaSync(silent){
+  if (!stravaOn() || stravaBusy) return; if (!navigator.onLine){ if(!silent) toast('Sin conexión'); return; }
+  stravaBusy = true; if (!silent) toast('Sincronizando…');
+  try {
+    const s = db.strava; s.seen = s.seen || [];
+    const acts = []; let page = 1;
+    while (true){ // paginado: 200 por página hasta agotar
+      const r = await stravaGet(`/athlete/activities?after=${s.after || 0}&per_page=200&page=${page}`);
+      acts.push(...r); if (r.length < 200 || page >= 20) break; page++;
+    }
+    let maxTs = s.after || 0, n = 0; const added = {};
+    for (const a of acts){
+      if (s.seen.includes(a.id)) continue;
+      s.seen.push(a.id);
+      maxTs = Math.max(maxTs, Math.floor(Date.parse(a.start_date)/1000));
+      if (!STRAVA_RIDES.has(a.sport_type || a.type)) continue;
+      const b = db.bikes.find(b => b.stravaGear === (a.gear_id || '_none'));
+      if (!b) continue;
+      const km = (a.distance || 0)/1000;
+      b.km = Math.round((b.km + km)*10)/10; added[b.name] = (added[b.name] || 0) + km; n++;
+    }
+    // "after" es exclusivo en Strava; guardamos el último inicio y los ids ya vistos por si acaso
+    s.after = Math.max(s.after || 0, maxTs - 1); s.seen = s.seen.slice(-500); s.lastSync = new Date().toISOString();
+    save(); render();
+    if (n) toast('Strava: ' + Object.entries(added).map(([k,v]) => k + ' +' + fmtKm(v)).join(' · '));
+    else if (!silent) toast('Strava: sin salidas nuevas');
+  } catch(e){ if (!silent) alert(e.message); }
+  stravaBusy = false;
 }
 function exportData(){
   const blob = new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
@@ -346,6 +485,7 @@ function delLog(lid){ if(!confirm('¿Eliminar este registro?')) return; db.logs 
 
 /* ================= ARRANQUE ================= */
 render();
+stravaCallback().then(fromLogin => { if (!fromLogin && stravaOn() && db.strava.autoSync) stravaSync(true); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>

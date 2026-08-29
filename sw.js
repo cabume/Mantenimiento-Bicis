@@ -1,6 +1,6 @@
 // Service worker: cachea la app para que funcione sin conexión.
 // Sube la versión cuando cambies archivos para forzar la actualización.
-const CACHE = 'misbicis-v1';
+const CACHE = 'misbicis-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -17,6 +17,7 @@ self.addEventListener('activate', e => {
 // Red primero (para coger actualizaciones), caché si no hay conexión.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== location.origin) return; // Strava y otros externos: nunca cachear
   e.respondWith(
     fetch(e.request).then(res => {
       const copy = res.clone();
