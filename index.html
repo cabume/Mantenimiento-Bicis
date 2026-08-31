@@ -89,14 +89,15 @@ const DEFAULT_TASKS = [
 ];
 let db = load();
 function load(){
-  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.bikes) return d; } catch(e){}
-  return { bikes: [], logs: [] };
+  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.bikes){ d.rider = d.rider || { km: 0, up: 0 }; return d; } } catch(e){}
+  return { bikes: [], logs: [], rider: { km: 0, up: 0 } };
 }
 function save(){ localStorage.setItem(KEY, JSON.stringify(db)); }
 const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
 const today = () => new Date().toISOString().slice(0,10);
 const fmtDate = d => { if(!d) return '—'; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; };
 const fmtKm = n => (Math.round(n*10)/10).toLocaleString('es-ES') + ' km';
+const fmtM = n => Math.round(n).toLocaleString('es-ES') + ' m';
 const daysBetween = (a,b) => Math.floor((new Date(b) - new Date(a)) / 86400000);
 const bike = id => db.bikes.find(b => b.id === id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -132,10 +133,16 @@ function render(){
 /* ================= INICIO ================= */
 function renderHome(hdr, app, fab){
   hdr.innerHTML = `<h1>🚲 Mis Bicis</h1><button onclick="go('settings')">⚙️</button>`;
+  const riderCard = `<div class="card tap" onclick="formRider()">
+    <div class="row"><div class="grow"><h2>🚴 Ciclista</h2>
+      <div class="muted">Total con todas las bicis</div></div>
+      <div style="text-align:right"><div class="big" style="font-size:22px">${fmtKm(db.rider.km)}</div>
+      <div class="muted">↗ ${fmtM(db.rider.up)}</div></div>
+    </div></div>`;
   if (!db.bikes.length){
-    app.innerHTML = `<div class="empty"><div class="ico">🚲</div><p>Aún no tienes bicis.<br>Pulsa <b>+</b> para añadir la primera.</p></div>`;
+    app.innerHTML = riderCard + `<div class="empty"><div class="ico">🚲</div><p>Aún no tienes bicis.<br>Pulsa <b>+</b> para añadir la primera.</p></div>`;
   } else {
-    app.innerHTML = db.bikes.map(b => {
+    app.innerHTML = riderCard + db.bikes.map(b => {
       const n = bikeAlerts(b);
       const worst = b.tasks.map(t => taskStatus(b,t)).sort((x,y)=>y.r-x.r)[0];
       return `<div class="card tap" onclick="go('bike','${b.id}')">
@@ -202,9 +209,9 @@ function renderSettings(hdr, app, fab){
     ${renderStravaCard()}
     <div class="card"><h2>Datos</h2>
       <p class="muted">${db.bikes.length} bicis · ${db.logs.length} mantenimientos</p>
-      <button class="btn danger sm" onclick="if(confirm('¿Borrar TODOS los datos? No se puede deshacer.')){db={bikes:[],logs:[]};save();toast('Datos borrados');go('home')}">Borrar todo</button>
+      <button class="btn danger sm" onclick="if(confirm('¿Borrar TODOS los datos? No se puede deshacer.')){db={bikes:[],logs:[],rider:{km:0,up:0}};save();toast('Datos borrados');go('home')}">Borrar todo</button>
     </div>
-    <div class="card muted" style="font-size:13px">Mis Bicis · app personal · v1.1</div>`;
+    <div class="card muted" style="font-size:13px">Mis Bicis · app personal · v1.2</div>`;
   fab.classList.add('hidden');
 }
 
@@ -331,9 +338,12 @@ async function stravaSync(silent){
       s.seen.push(a.id);
       maxTs = Math.max(maxTs, Math.floor(Date.parse(a.start_date)/1000));
       if (!STRAVA_RIDES.has(a.sport_type || a.type)) continue;
+      const km = (a.distance || 0)/1000;
+      // totales del ciclista: toda salida en bici cuenta, tenga o no bici asignada
+      db.rider.km = Math.round((db.rider.km + km)*10)/10;
+      db.rider.up = Math.round(db.rider.up + (a.total_elevation_gain || 0));
       const b = db.bikes.find(b => b.stravaGear === (a.gear_id || '_none'));
       if (!b) continue;
-      const km = (a.distance || 0)/1000;
       b.km = Math.round((b.km + km)*10)/10; added[b.name] = (added[b.name] || 0) + km; n++;
     }
     // "after" es exclusivo en Strava; guardamos el último inicio y los ids ya vistos por si acaso
@@ -352,7 +362,7 @@ function exportData(){
 function importData(file){
   if(!file) return;
   const r = new FileReader();
-  r.onload = () => { try { const d = JSON.parse(r.result); if(!d.bikes||!d.logs) throw 0;
+  r.onload = () => { try { const d = JSON.parse(r.result); if(!d.bikes||!d.logs) throw 0; d.rider = d.rider || { km:0, up:0 };
     if(confirm(`Importar ${d.bikes.length} bicis y ${d.logs.length} mantenimientos. Sustituirá los datos actuales.`)){ db = d; save(); toast('Importado'); go('home'); }
   } catch(e){ alert('Archivo no válido'); } };
   r.readAsText(file);
@@ -407,16 +417,47 @@ function formKm(bid){
   const b = bike(bid);
   openSheet(`<h3>Añadir kilómetros</h3>
     <p class="muted">Ahora: <b>${fmtKm(b.km)}</b></p>
-    <label>Km de la salida (se suman)</label><input id="f-add" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 42.5">
+    <div class="grid2">
+      <div><label>Km de la salida (se suman)</label><input id="f-add" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 42.5"></div>
+      <div><label>Desnivel de la salida (m)</label><input id="f-up" type="number" inputmode="numeric" placeholder="Ej. 650"></div>
+    </div>
+    <label style="margin-top:10px"><input type="checkbox" id="f-rider" ${stravaOn()?'':'checked'} style="width:auto;margin-right:8px">Sumar también al total del ciclista${stravaOn()?' (ojo: Strava ya lo suma solo)':''}</label>
     <p class="muted" style="text-align:center;margin:10px 0 0">— o —</p>
     <label>Fijar total del cuentakilómetros</label><input id="f-total" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 3120">
     <div class="actions"><button class="btn sec" onclick="closeSheet()">Cancelar</button><button class="btn" onclick="saveKm('${bid}')">Guardar</button></div>`);
   setTimeout(()=>document.getElementById('f-add').focus(),50);
 }
 function saveKm(bid){
-  const b = bike(bid), add = num('f-add'), total = num('f-total');
+  const b = bike(bid), add = num('f-add'), total = num('f-total'), up = num('f-up');
   if (total != null) b.km = total; else if (add != null) b.km = Math.round((b.km + add)*10)/10; else return alert('Introduce un valor');
+  if (document.getElementById('f-rider').checked){
+    if (add != null && total == null) db.rider.km = Math.round((db.rider.km + add)*10)/10;
+    if (up != null) db.rider.up = Math.round(db.rider.up + up);
+  }
   save(); closeSheet(); toast(fmtKm(b.km)); render();
+}
+
+/* --- Totales del ciclista --- */
+function formRider(){
+  openSheet(`<h3>🚴 Totales del ciclista</h3>
+    <p class="muted">Suma de todas tus salidas, con cualquier bici (también las que ya no tienes).<br>
+    Ahora: <b>${fmtKm(db.rider.km)}</b> · <b>${fmtM(db.rider.up)}</b> de desnivel.</p>
+    <div class="grid2">
+      <div><label>Sumar km</label><input id="f-rkm" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 42.5"></div>
+      <div><label>Sumar desnivel (m)</label><input id="f-rup" type="number" inputmode="numeric" placeholder="Ej. 650"></div>
+    </div>
+    <p class="muted" style="text-align:center;margin:10px 0 0">— o fijar los totales —</p>
+    <div class="grid2">
+      <div><label>Km totales</label><input id="f-rtkm" type="number" inputmode="decimal" step="0.1" placeholder="Ej. 27825.1"></div>
+      <div><label>Desnivel total (m)</label><input id="f-rtup" type="number" inputmode="numeric" placeholder="Ej. 617505"></div>
+    </div>
+    <div class="actions"><button class="btn sec" onclick="closeSheet()">Cancelar</button><button class="btn" onclick="saveRider()">Guardar</button></div>`);
+}
+function saveRider(){
+  const akm = num('f-rkm'), aup = num('f-rup'), tkm = num('f-rtkm'), tup = num('f-rtup');
+  if (tkm != null) db.rider.km = tkm; else if (akm != null) db.rider.km = Math.round((db.rider.km + akm)*10)/10;
+  if (tup != null) db.rider.up = tup; else if (aup != null) db.rider.up = Math.round(db.rider.up + aup);
+  save(); closeSheet(); toast(`${fmtKm(db.rider.km)} · ${fmtM(db.rider.up)}`); render();
 }
 
 /* --- Tarea de desgaste --- */
