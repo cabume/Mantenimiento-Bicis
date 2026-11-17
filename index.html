@@ -326,7 +326,8 @@ async function stravaSync(silent){
   if (!stravaOn() || stravaBusy) return; if (!navigator.onLine){ if(!silent) toast('Sin conexión'); return; }
   stravaBusy = true; if (!silent) toast('Sincronizando…');
   try {
-    const s = db.strava; s.seen = s.seen || [];
+    // ids como texto (id_str): Strava pasa a ids de 64 bits que JavaScript no guarda exactos (aviso jun-2027)
+    const s = db.strava; s.seen = (s.seen || []).map(String);
     const acts = []; let page = 1;
     while (true){ // paginado: 200 por página hasta agotar
       const r = await stravaGet(`/athlete/activities?after=${s.after || 0}&per_page=200&page=${page}`);
@@ -334,8 +335,9 @@ async function stravaSync(silent){
     }
     let maxTs = s.after || 0, n = 0; const added = {};
     for (const a of acts){
-      if (s.seen.includes(a.id)) continue;
-      s.seen.push(a.id);
+      const id = a.id_str || String(a.id);
+      if (s.seen.includes(id)) continue;
+      s.seen.push(id);
       maxTs = Math.max(maxTs, Math.floor(Date.parse(a.start_date)/1000));
       if (!STRAVA_RIDES.has(a.sport_type || a.type)) continue;
       const km = (a.distance || 0)/1000;

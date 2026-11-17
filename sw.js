@@ -1,6 +1,6 @@
 // Service worker: cachea la app para que funcione sin conexión.
 // Sube la versión cuando cambies archivos para forzar la actualización.
-const CACHE = 'misbicis-v3';
+const CACHE = 'misbicis-v4';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
